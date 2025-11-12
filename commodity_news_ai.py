@@ -10,26 +10,26 @@ import time
 import os
 from transformers import pipeline
 
-# === CONFIG ===
+#  CONFIG 
 st.set_page_config(page_title="Commodity News AI - Moatez", layout="wide")
 st.title("Commodity News AI Dashboard")
 st.markdown("**PROJECT Demo – Moatez DHIEB** | EPI SUP | DNEXT Project #1")
 
-# === SIDEBAR ===
+#  SIDEBAR 
 st.sidebar.header("Paramètres")
 commodity = st.sidebar.selectbox("Commodity", ["corn", "wheat", "soybean", "coffee"])
 num_articles = st.sidebar.slider("Articles à analyser", 1, 20, 5)
 
-# === HEADERS ===
+#  HEADERS 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "en-US,en;q=0.9"
 }
 
-# === FICHIER JSON ===
+#  FICHIER JSON 
 JSON_FILE = "scraped_articles.json"
 
-# === HUGGING FACE MODEL (FINANCIAL NEWS - 100% FONCTIONNEL) ===
+#  HUGGING FACE MODEL (FINANCIAL NEWS - 100% FONCTIONNEL) 
 @st.cache_resource
 def load_sentiment_model():
     try:
@@ -45,7 +45,7 @@ def load_sentiment_model():
         st.warning("→ Fallback simulation activée")
         return None
 
-# === SCRAPING RÉEL SUR BING NEWS RSS ===
+#  SCRAPING RÉEL SUR BING NEWS RSS 
 @st.cache_data(ttl=1800)
 def scrape_bing_news(query, n=5):
     url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
@@ -84,14 +84,14 @@ def scrape_bing_news(query, n=5):
         st.error(f"Erreur Bing : {e} → Fallback")
         return []
 
-# === DONNÉES SIMULÉES (fallback) ===
+#  DONNÉES SIMULÉES (fallback) 
 fallback_articles = [
     {"title": f"{commodity.title()} prices fall due to strong harvest", "link": "https://reuters.com", "source": "Simulé"},
     {"title": f"Brazil boosts {commodity} exports", "link": "https://bloomberg.com", "source": "Simulé"},
     {"title": f"EU imposes new tariffs on {commodity}", "link": "https://euronews.com", "source": "Simulé"}
 ]
 
-# === ANALYSE IA (HF FINANCIER) ===
+#  ANALYSE IA (HF FINANCIER) 
 def analyze_sentiment(title, model):
     if model:
         try:
@@ -121,7 +121,6 @@ def analyze_sentiment(title, model):
             return "Négative", round(random.uniform(-0.95, -0.6), 3)
         return "Neutre", 0.0
 
-# === MAIN ===
 if st.button("Lancer l'analyse IA"):
     with st.spinner("Scraping Bing News + Analyse IA (Hugging Face Financial)..."):
         real_articles = scrape_bing_news(commodity, num_articles)
@@ -141,10 +140,10 @@ if st.button("Lancer l'analyse IA"):
         
         df = pd.DataFrame(results)
         
-        # === DASHBOARD PRO DNEXT STYLE ===
+        #  DASHBOARD  STYLE 
         st.markdown("---")
         
-        # === HEADER STATS ===
+        #  HEADER STATS 
         col_stats1, col_stats2, col_stats3 = st.columns(3)
         with col_stats1:
             st.metric(
@@ -169,7 +168,7 @@ if st.button("Lancer l'analyse IA"):
 
         st.markdown("---")
 
-        # === CHART + TABLEAU ===
+        #  CHART + TABLEAU 
         col_chart, col_table = st.columns([2, 1], gap="large")
 
         with col_chart:
@@ -215,7 +214,7 @@ if st.button("Lancer l'analyse IA"):
 
         st.markdown("---")
 
-        # === JSON CHECK (expander pro) ===
+        #  JSON CHECK 
         with st.expander("Check technique : Données brutes (scraping)", expanded=False):
             if os.path.exists(JSON_FILE):
                 with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -227,7 +226,7 @@ if st.button("Lancer l'analyse IA"):
 
     st.success("Analyse IA terminée !")
 
-# === FOOTER PRO ===
+#  FOOTER
 st.markdown("---")
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
@@ -241,7 +240,7 @@ with col_footer1:
 with col_footer2:
     st.markdown("**Projet Demo**  \nDNEXT Intelligence SA  \n*Fév  2026*")
 
-# === TON CV INTÉGRÉ (expander pro) ===
+#  MON CV INTÉGRÉ 
 with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=False):
     col_cv1, col_cv2 = st.columns([1, 2])
     with col_cv1:
@@ -264,4 +263,5 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                     use_container_width=True
                 )
         else:
+
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
