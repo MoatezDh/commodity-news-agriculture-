@@ -92,7 +92,6 @@ def scrape_bing_news(query, n=5):
 
     except Exception as e:
         st.error(f"Erreur Bing : {e} → Fallback alternatif")
-        return scrape_alternative_rss(query, n)
         
 #  DONNÉES SIMULÉES (fallback) 
 fallback_articles = [
@@ -275,5 +274,6 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
         else:
 
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
