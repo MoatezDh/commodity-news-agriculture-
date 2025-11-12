@@ -46,7 +46,7 @@ def load_sentiment_model():
         return None
 
 #  SCRAPING RÉEL SUR BING NEWS RSS 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=1800, show_spinner="Scraping en cours...")
 def scrape_bing_news(query, n=5):
     url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
     articles = []
@@ -57,7 +57,7 @@ def scrape_bing_news(query, n=5):
             st.warning(f"HTTP {response.status_code} → Fallback")
             return []
         
-        soup = BeautifulSoup(response.text, 'xml')
+        soup = BeautifulSoup(response.text, 'xml', parser='lxml')  # FIX : lxml parser
         items = soup.find_all('item')[:n]
         
         if not items:
@@ -75,9 +75,10 @@ def scrape_bing_news(query, n=5):
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
         
+        # FORCE RE-SAUVE JSON (anti-cache)
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
-        st.success(f"Scraping Bing News → {len(articles)} articles sauvés dans `{JSON_FILE}`")
+        st.success(f"Scraping Bing → {len(articles)} articles sauvés dans `{JSON_FILE}`")
         return articles
 
     except Exception as e:
@@ -265,3 +266,4 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
         else:
 
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
