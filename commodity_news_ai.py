@@ -54,37 +54,46 @@ def scrape_bing_news(query, n=5):
         time.sleep(1)
         response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code != 200:
-            st.warning(f"HTTP {response.status_code} → Fallback")
-            return []
+            st.warning(f"HTTP {response.status_code} → Fallback alternatif")
+            return scrape_alternative_rss(query, n)  # Alternative si Bing down
         
-        soup = BeautifulSoup(response.text, 'xml', parser='lxml')  # FIX : lxml parser
-        items = soup.find_all('item')[:n]
+        # FIX PARSING : Try XML, fallback HTML
+        try:
+            soup = BeautifulSoup(response.text, 'xml', parser='lxml')
+            items = soup.find_all('item')[:n]
+        except:
+            st.warning("XML parsing échoué → Fallback HTML")
+            soup = BeautifulSoup(response.text, 'html.parser')
+            items = soup.find_all('article')[:n]  # HTML fallback
         
         if not items:
-            st.warning("Aucun article Bing → Fallback")
-            return []
+            st.warning("Aucun article → Fallback alternatif")
+            return scrape_alternative_rss(query, n)
         
         for item in items:
-            title = item.find('title').text if item.find('title') else "No title"
-            link = item.find('link').text if item.find('link') else "#"
-            articles.append({
-                "title": title,
-                "link": link,
-                "source": "Bing News",
-                "commodity": commodity,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            })
+            title_tag = item.find('title') or item.find('h3') or item.find('a')
+            link_tag = item.find('link') or item.find('a')
+            if title_tag:
+                title = title_tag.text.strip() if hasattr(title_tag, 'text') else title_tag.get_text(strip=True)
+                link = link_tag['href'] if link_tag and 'href' in link_tag.attrs else "#"
+                articles.append({
+                    "title": title,
+                    "link": link,
+                    "source": "Bing News",
+                    "commodity": commodity,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                })
         
-        # FORCE RE-SAUVE JSON (anti-cache)
+        # FORCE RE-SAUVE JSON
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
         st.success(f"Scraping Bing → {len(articles)} articles sauvés dans `{JSON_FILE}`")
-        return articles
+        return articles[:n]  # Limite n
 
     except Exception as e:
-        st.error(f"Erreur Bing : {e} → Fallback")
-        return []
-
+        st.error(f"Erreur Bing : {e} → Fallback alternatif")
+        return scrape_alternative_rss(query, n)
+        
 #  DONNÉES SIMULÉES (fallback) 
 fallback_articles = [
     {"title": f"{commodity.title()} prices fall due to strong harvest", "link": "https://reuters.com", "source": "Simulé"},
@@ -266,4 +275,5 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
         else:
 
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
