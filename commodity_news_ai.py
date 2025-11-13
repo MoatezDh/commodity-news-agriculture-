@@ -218,41 +218,66 @@ if st.button("Lancer l'analyse IA"):
 
         st.markdown("---")
 
-        # CHART + TABLEAU
+        # CHART + TABLEAU (2 COLUMNS)
         col_chart, col_table = st.columns([2, 1], gap="large")
 
+        # === CHART COLUMN: BAR + LINE CHART ===
         with col_chart:
             st.subheader("Tendance du Sentiment (IA Hugging Face)")
-            fig = px.bar(
-                df, 
-                x="Titre", 
-                y="Score", 
+
+            # --- BAR CHART ---
+            fig_bar = px.bar(
+                df,
+                x="Titre",
+                y="Score",
                 color="Sentiment",
                 color_discrete_map={"Positive": "#00D26A", "Négative": "#FF4B4B", "Neutre": "#A0A0A0", "Erreur": "#FFAA00"},
-                title=f"Analyse IA sur les prix du {commodity.title()}",
-                hover_data={"Lien": True}
+                title=f"Analyse IA (Barres)",
+                hover_data={"Lien": False}
             )
-            fig.update_layout(
-                xaxis_title="",
-                yaxis_title="Score IA",
-                height=500,
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Arial", size=12),
-                legend_title="Sentiment"
+            fig_bar.update_layout(
+                xaxis_title="", yaxis_title="Score IA", height=400,
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Arial", size=12), legend_title="Sentiment"
             )
-            fig.update_traces(hovertemplate="<b>%{x}</b><br>Score: %{y}<br><extra></extra>")
-            st.plotly_chart(fig, use_container_width=True)
+            fig_bar.update_traces(hovertemplate="<b>%{x}</b><br>Score: %{y}<extra></extra>")
 
+            # --- LINE CHART (NEW!) ---
+            # Sort by score descending to simulate "time" (most impactful first)
+            df_line = df.copy().sort_values("Score", ascending=False).reset_index(drop=True)
+            df_line["Index"] = range(1, len(df_line) + 1)
+
+            fig_line = px.line(
+                df_line,
+                x="Index",
+                y="Score",
+                color="Sentiment",
+                color_discrete_map={"Positive": "#00D26A", "Négative": "#FF4B4B", "Neutre": "#A0A0A0", "Erreur": "#FFAA00"},
+                title="Évolution du Sentiment (Ligne)",
+                markers=True
+            )
+            fig_line.update_layout(
+                xaxis_title="Article # (trié par impact)", yaxis_title="Score IA",
+                height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Arial", size=12), legend_title="Sentiment"
+            )
+            fig_line.update_traces(hovertemplate="<b>Article %{x}</b><br>Score: %{y}<extra></extra>")
+
+            # --- DISPLAY BOTH CHARTS ---
+            tab1, tab2 = st.tabs(["Barres", "Ligne"])
+            with tab1:
+                st.plotly_chart(fig_bar, use_container_width=True)
+            with tab2:
+                st.plotly_chart(fig_line, use_container_width=True)
+        # === TABLE COLUMN: RESPONSIVE + CLEAN ===
         with col_table:
             st.subheader("Détail des Résultats IA")
-        
-            # Helper to make clickable + clean Bing URLs
+
+            # Clean links
             def make_clickable(val):
                 if val == "#" or not val.startswith("http"):
                     return "Lien non disponible"
-                # Extract real URL from Bing redirect
-                if "bing.com/news/apiclick.aspx" in val:
+                if "bing.com" in val or "google.com" in val:
                     try:
                         from urllib.parse import parse_qs, urlparse
                         parsed = urlparse(val)
@@ -260,17 +285,66 @@ if st.button("Lancer l'analyse IA"):
                         val = real
                     except:
                         pass
-                return f'<a href="{val}" target="_blank">Voir l\'article</a>'
-        
+                return f'<a href="{val}" target="_blank" style="color:#00D26A; text-decoration:none;">Voir</a>'
+
             df_display = df.copy()
             df_display["Lien"] = df_display["Lien"].apply(make_clickable)
-        
-            # Render as HTML to allow <a> tags
-            st.markdown(
-                df_display[["Titre", "Sentiment", "Score", "Lien"]].to_html(escape=False, index=False),
-                unsafe_allow_html=True
-            )
 
+            # RESPONSIVE HTML TABLE
+            html_table = """
+            <style>
+            .responsive-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.9em;
+                overflow-x: auto;
+                display: block;
+                white-space: nowrap;
+            }
+            .responsive-table th, .responsive-table td {
+                padding: 8px 6px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            .responsive-table th {
+                background-color: #f2f2f2;
+                font-weight: bold;
+            }
+            .responsive-table tr:hover {
+                background-color: #f5f5f5;
+            }
+            @media (max-width: 768px) {
+                .responsive-table {
+                    font-size: 0.8em;
+                }
+            }
+            </style>
+            <div style="max-height: 600px; overflow-y: auto; overflow-x: auto;">
+            <table class="responsive-table">
+                <thead><tr>
+                    <th>Titre</th>
+                    <th>Sentiment</th>
+                    <th>Score</th>
+                    <th>Lien</th>
+                </tr></thead>
+                <tbody>
+            """
+
+            for _, row in df_display.iterrows():
+                html_table += f"""
+                <tr>
+                    <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {row['Titre']}
+                    </td>
+                    <td>{row['Sentiment']}</td>
+                    <td>{row['Score']:.3f}</td>
+                    <td>{row['Lien']}</td>
+                </tr>
+                """
+
+            html_table += "</tbody></table></div>"
+
+            st.markdown(html_table, unsafe_allow_html=True)
         st.markdown("---")
 
         # JSON CHECK (expander pro)
@@ -326,6 +400,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
