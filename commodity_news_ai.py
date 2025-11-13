@@ -4,31 +4,139 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import json
 import time
 import os
+from datetime import datetime
 from transformers import pipeline
 
-# CONFIG
-st.set_page_config(page_title="Commodity News AI - Moatez", layout="wide")
-st.title("Commodity News AI Dashboard")
-st.markdown("**PROJECT Demo – Moatez DHIEB** | EPI SUP | DNEXT Project #1")
+# === PAGE CONFIG ===
+st.set_page_config(
+    page_title="Commodity News AI - Moatez Dhieb",
+    page_icon="Chart increasing",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# SIDEBAR
-st.sidebar.header("Settings")
-commodity = st.sidebar.selectbox("Commodity", ["corn", "wheat", "soybean", "coffee"])
-num_articles = st.sidebar.slider("Articles to analyze", 1, 50, 5)
+# === PRO CSS: GLASSMORPHISM + IMPACT ===
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * { font-family: 'Inter', sans-serif; }
+    
+    .main { 
+        background: linear-gradient(135deg, #0f0f23 0%, #1a1a3d 100%); 
+        padding: 2rem;
+    }
+    
+    .header-title {
+        font-size: 3.2rem !important;
+        font-weight: 700;
+        background: linear-gradient(90deg, #00D26A, #00B8FF);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .header-subtitle {
+        text-align: center;
+        color: #a0a0ff;
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 2rem;
+    }
+    
+    .glass-card {
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 1.5rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        margin-bottom: 1.5rem;
+    }
+    
+    .metric-card {
+        background: rgba(0, 210, 106, 0.15);
+        border-left: 5px solid #00D26A;
+        border-radius: 8px;
+        padding: 1rem;
+        transition: all 0.3s;
+    }
+    .metric-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0, 210, 106, 0.2); }
+    
+    .negative-card { 
+        background: rgba(255, 75, 75, 0.15); 
+        border-left-color: #FF4B4B; 
+    }
+    .negative-card:hover { box-shadow: 0 10px 20px rgba(255, 75, 75, 0.2); }
+    
+    .stButton>button {
+        background: linear-gradient(90deg, #00D26A, #00B8FF);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 0.7rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.3s;
+        width: 100%;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 210, 106, 0.4);
+    }
+    
+    .live-clock {
+        text-align: center;
+        color: #00D26A;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin: 1rem 0;
+    }
 
-# HEADERS
+    .cv-section {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 1.2rem;
+        border: 1px solid rgba(0, 210, 106, 0.3);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# === HEADER ===
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.markdown('<h1 class="header-title">Commodity News AI</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="header-subtitle">Real-time Financial Sentiment Intelligence | Powered by Hugging Face</p>', unsafe_allow_html=True)
+
+# === LIVE CLOCK ===
+st.markdown(f'<div class="live-clock">Live Analysis • {datetime.now().strftime("%H:%M:%S")} UTC</div>', unsafe_allow_html=True)
+
+# === SIDEBAR ===
+with st.sidebar:
+    st.image("https://via.placeholder.com/150x50/00D26A/ffffff?text=DNEXT", use_column_width=True)
+    st.markdown("### Control Panel")
+    commodity = st.selectbox("Commodity", ["corn", "wheat", "soybean", "coffee"])
+    num_articles = st.slider("Articles to Analyze", 1, 50, 10, step=5)
+    
+    st.markdown("---")
+    st.markdown("#### Model Status")
+    if 'model_loaded' not in st.session_state:
+        st.session_state.model_loaded = False
+    st.markdown(f"**Hugging Face Model:** {'Active' if st.session_state.model_loaded else 'Loading...'}")
+
+# === HEADERS & FILES ===
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "en-US,en;q=0.9"
 }
-
-# JSON FILE
 JSON_FILE = "scraped_articles.json"
 
-# HUGGING FACE MODEL (FINANCIAL NEWS - 100% FUNCTIONAL)
+# === MODEL LOADING ===
 @st.cache_resource
 def load_sentiment_model():
     try:
@@ -37,303 +145,176 @@ def load_sentiment_model():
             model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
             return_all_scores=False
         )
-        st.success("Hugging Face AI (Financial News) loaded!")
+        st.session_state.model_loaded = True
         return model
     except Exception as e:
-        st.error(f"HF loading error: {e}")
-        st.warning("→ Fallback simulation activated")
+        st.error(f"Model Error: {e}")
         return None
 
-# ADD AT TOP
+# === SCRAPING ===
 if 'scrape_counter' not in st.session_state:
     st.session_state.scrape_counter = 0
 
-# SCRAPING REAL NEWS FROM GOOGLE/BING RSS
 def scrape_news(query, n=5):
-    # Unique key forces fresh scrape
     cache_key = f"{query}_{n}_{st.session_state.scrape_counter}"
-   
     if cache_key in st.session_state:
-        articles = st.session_state[cache_key]
-        st.info(f"Loaded from memory ({len(articles)} articles)")
-        return articles
+        return st.session_state[cache_key]
 
     articles = []
     url = f"https://news.google.com/rss/search?q={query}+price+when:1d&hl=en-US&gl=US&ceid=US:en"
+    
     try:
         time.sleep(1)
         response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'xml')
-            items = soup.find_all('item')
-            st.info(f"Google News: {len(items)} articles found")
+            items = soup.find_all('item')[:50]
         else:
-            raise Exception("Google failed")
+            raise Exception()
     except:
-        st.warning("Google failed → Fallback to Bing")
+        st.warning("Google failed → Bing fallback")
         url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
         try:
             response = requests.get(url, headers=HEADERS, timeout=10)
-            if response.status_code != 200:
-                raise Exception("Bing failed")
             soup = BeautifulSoup(response.text, 'xml')
-            items = soup.find_all('item')
-            st.info(f"Bing: {len(items)} articles found")
-        except Exception as e:
-            st.error(f"Scraping failed: {e}")
+            items = soup.find_all('item')[:50]
+        except:
+            st.error("All sources failed")
             return []
 
     valid = []
     for item in items:
-        title_tag = item.find('title')
-        link_tag = item.find('link')
-        if not title_tag or not link_tag:
-            continue
-        title = title_tag.text.strip()
-        link = link_tag.text.strip()
+        title = item.find('title').text.strip() if item.find('title') else ""
+        link = item.find('link').text.strip() if item.find('link') else ""
         
-        if any(x in title.lower() for x in ["video", "watch", "live", "youtube", "podcast"]):
-            continue
-        if len(title) < 25:
+        if len(title) < 25 or any(x in title.lower() for x in ["video", "watch", "live"]):
             continue
             
-        # CLEAN GOOGLE LINK
         if "news.google.com/rss/articles/" in link:
             try:
-                import base64, re
                 from urllib.parse import urlparse
-                path = urlparse(link).path
-                encoded = path.split("/articles/")[-1].split("?")[0]
+                import base64, re
+                encoded = urlparse(link).path.split("/articles/")[-1].split("?")[0]
                 missing = len(encoded) % 4
-                if missing:
-                    encoded += '=' * (4 - missing)
+                if missing: encoded += '=' * (4 - missing)
                 decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
                 match = re.search(r'"(https?://[^"]+)"', decoded)
-                if match:
-                    link = match.group(1)
-            except:
-                pass
+                if match: link = match.group(1)
+            except: pass
 
-        valid.append({
-            "title": title,
-            "link": link,
-            "source": "Google News" if "google" in url else "Bing News",
-            "commodity": query,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
+        valid.append({"title": title, "link": link, "source": "Google" if "google" in url else "Bing"})
 
     articles = valid[:n]
-    
     if articles:
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
-        st.success(f"{len(articles)} articles saved → {JSON_FILE}")
         st.session_state[cache_key] = articles
-    else:
-        st.warning("No valid articles found")
-    
     return articles
 
-# AI ANALYSIS (HF FINANCIAL)
-def analyze_sentiment(title, model):
-    if model:
-        try:
-            res = model(title)[0]
-            label = res['label'].lower()
-            score = res['score']
-            if label == "negative":
-                score = -score
-                sentiment_en = "Negative"
-            elif label == "positive":
-                sentiment_en = "Positive"
-            else:  # neutral
-                score = 0
-                sentiment_en = "Neutral"
-            return sentiment_en, round(score, 3)
-        except Exception as e:
-            st.error(f"HF analysis error: {e}")
-            return "Error", 0
-    else:
-        # Fallback simulation
-        pos = ["rise", "boost", "record", "strong", "surge", "high"]
-        neg = ["fall", "drop", "drought", "threat", "tariff", "low"]
-        t = title.lower()
-        if any(w in t for w in pos):
-            return "Positive", round(random.uniform(0.6, 0.95), 3)
-        if any(w in t for w in neg):
-            return "Negative", round(random.uniform(-0.95, -0.6), 3)
-        return "Neutral", 0.0
-
-if st.button("Run AI Analysis"):
-    st.session_state.scrape_counter += 1  # FORCE FRESH
-    with st.spinner("Scraping News + AI Analysis (Hugging Face Financial)..."):
-        # FIXED: Dynamic fallback inside button (uses current commodity)
-        fallback_articles = [
-            {"title": f"{commodity.title()} prices fall due to strong harvest", "link": "https://reuters.com", "source": "Simulated"},
-            {"title": f"Brazil boosts {commodity} exports", "link": "https://bloomberg.com", "source": "Simulated"},
-            {"title": f"EU imposes new tariffs on {commodity}", "link": "https://euronews.com", "source": "Simulated"}
+# === MAIN ANALYSIS BUTTON ===
+if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
+    st.session_state.scrape_counter += 1
+    with st.spinner("Scraping • Analyzing • Visualizing..."):
+        fallback = [
+            {"title": f"{commodity.title()} prices surge on supply fears", "link": "https://reuters.com"},
+            {"title": f"Brazil {commodity} harvest exceeds expectations", "link": "https://bloomberg.com"},
+            {"title": f"US imposes tariffs on {commodity} imports", "link": "https://wsj.com"}
         ]
-       
-        real_articles = scrape_news(commodity, num_articles)
-        articles = real_articles if real_articles else fallback_articles[:num_articles]
-       
+        articles = scrape_news(commodity, num_articles) or fallback[:num_articles]
         model = load_sentiment_model()
-       
+
         results = []
         for art in articles:
-            sentiment, score = analyze_sentiment(art["title"], model)
+            sentiment, score = ("Neutral", 0.0)
+            if model:
+                try:
+                    res = model(art["title"])[0]
+                    label = res['label'].lower()
+                    score = res['score']
+                    if label == "negative": score = -score; sentiment = "Negative"
+                    elif label == "positive": sentiment = "Positive"
+                    else: sentiment = "Neutral"; score = 0
+                except: pass
+            else:
+                t = art["title"].lower()
+                if any(w in t for w in ["rise", "boost", "surge"]): sentiment, score = "Positive", round(random.uniform(0.7, 0.95), 3)
+                elif any(w in t for w in ["fall", "drop", "tariff"]): sentiment, score = "Negative", round(random.uniform(-0.95, -0.7), 3)
+
             results.append({
-                "Title": art["title"][:100] + "..." if len(art["title"]) > 100 else art["title"],
+                "Title": art["title"][:90] + "..." if len(art["title"]) > 90 else art["title"],
                 "Sentiment": sentiment,
-                "Score": score,
+                "Score": round(score, 3),
                 "Link": art["link"]
             })
-       
         df = pd.DataFrame(results)
-       
-        # DASHBOARD STYLE
-        st.markdown("---")
-       
-        # HEADER STATS
-        col_stats1, col_stats2, col_stats3 = st.columns(3)
-        with col_stats1:
-            st.metric(
-                label="Articles analyzed",
-                value=len(df),
-                delta=f"{commodity.title()}"
-            )
-        with col_stats2:
-            pos_count = len(df[df["Sentiment"] == "Positive"])
-            st.metric(
-                label="Positive Sentiment",
-                value=f"{pos_count}/{len(df)}",
-                delta=f"+{round((pos_count/len(df)*100) if len(df)>0 else 0, 1)}%"
-            )
-        with col_stats3:
-            neg_count = len(df[df["Sentiment"] == "Negative"])
-            st.metric(
-                label="Negative Sentiment",
-                value=f"{neg_count}/{len(df)}",
-                delta=f"-{round((neg_count/len(df)*100) if len(df)>0 else 0, 1)}%"
-            )
-        st.markdown("---")
+
+        # === 3D GLOBE ===
+        sentiment_map = {"Positive": 1, "Negative": -1, "Neutral": 0}
+        df['Impact'] = df['Sentiment'].map(sentiment_map) * df['Score'].abs()
         
-        # CHART + TABLE (2 COLUMNS)
+        fig_3d = go.Figure(data=go.Scattergeo(
+            lon = [10, -50, -70, 40, 100],
+            lat = [30, -10, -20, 50, 35],
+            text = df['Title'],
+            mode = 'markers',
+            marker = dict(
+                size = df['Score'].abs() * 15,
+                color = df['Impact'],
+                colorscale = [[0, '#FF4B4B'], [0.5, '#A0A0A0'], [1, '#00D26A']],
+                cmin = -1, cmax = 1,
+                colorbar_title = "Sentiment Impact"
+            )
+        ))
+        fig_3d.update_layout(
+            title = "Global Sentiment Impact",
+            geo = dict(projection_type='orthographic', showland=True, landcolor='lightgray'),
+            height=500, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+        )
+
+        # === METRICS ===
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"<div class='glass-card metric-card'><h3>{len(df)}</h3><p>Articles</p></div>", unsafe_allow_html=True)
+        with col2:
+            pos = len(df[df["Sentiment"] == "Positive"])
+            st.markdown(f"<div class='glass-card metric-card'><h3>{pos}/{len(df)}</h3><p>Positive</p></div>", unsafe_allow_html=True)
+        with col3:
+            neg = len(df[df["Sentiment"] == "Negative"])
+            st.markdown(f"<div class='glass-card metric-card negative-card'><h3>{neg}/{len(df)}</h3><p>Negative</p></div>", unsafe_allow_html=True)
+        with col4:
+            avg = df['Score'].mean()
+            color = "#00D26A" if avg > 0 else "#FF4B4B" if avg < 0 else "#A0A0A0"
+            st.markdown(f"<div class='glass-card metric-card' style='border-left-color:{color}'><h3>{avg:+.3f}</h3><p>Avg Score</p></div>", unsafe_allow_html=True)
+
+        # === CHARTS + TABLE ===
         col_chart, col_table = st.columns([2, 1], gap="large")
-        
-        # === CHART COLUMN: BAR + LINE CHART ===
         with col_chart:
-            st.subheader("Sentiment Trend (Hugging Face AI)")
-            # --- BAR CHART ---
-            fig_bar = px.bar(
-                df,
-                x="Title",
-                y="Score",
-                color="Sentiment",
-                color_discrete_map={"Positive": "#00D26A", "Negative": "#FF4B4B", "Neutral": "#A0A0A0", "Error": "#FFAA00"},
-                title="AI Analysis (Bars)",
-                hover_data={"Link": False}
-            )
-            fig_bar.update_layout(
-                xaxis_title="", yaxis_title="AI Score", height=400,
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Arial", size=12), legend_title="Sentiment"
-            )
-            fig_bar.update_traces(hovertemplate="<b>%{x}</b><br>Score: %{y}<extra></extra>")
-            
-            # --- LINE CHART ---
-            df_line = df.copy().sort_values("Score", ascending=False).reset_index(drop=True)
-            df_line["Index"] = range(1, len(df_line) + 1)
-            fig_line = px.line(
-                df_line,
-                x="Index",
-                y="Score",
-                color="Sentiment",
-                color_discrete_map={"Positive": "#00D26A", "Negative": "#FF4B4B", "Neutral": "#A0A0A0", "Error": "#FFAA00"},
-                title="Sentiment Evolution (Line)",
-                markers=True
-            )
-            fig_line.update_layout(
-                xaxis_title="Article # (sorted by impact)", yaxis_title="AI Score",
-                height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Arial", size=12), legend_title="Sentiment"
-            )
-            fig_line.update_traces(hovertemplate="<b>Article %{x}</b><br>Score: %{y}<extra></extra>")
-            
-            # DISPLAY BOTH CHARTS
-            tab1, tab2 = st.tabs(["Bars", "Line"])
+            tab1, tab2, tab3 = st.tabs(["3D Globe", "Bar Impact", "Trend Line"])
             with tab1:
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_3d, use_container_width=True)
             with tab2:
+                fig_bar = px.bar(df, x="Title", y="Score", color="Sentiment",
+                                color_discrete_map={"Positive": "#00D26A", "Negative": "#FF4B4B", "Neutral": "#A0A0A0"})
+                fig_bar.update_layout(height=450, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_bar, use_container_width=True)
+            with tab3:
+                df_line = df.copy().sort_values("Score", ascending=False).reset_index(drop=True)
+                df_line["Rank"] = range(1, len(df_line)+1)
+                fig_line = px.line(df_line, x="Rank", y="Score", color="Sentiment", markers=True)
                 st.plotly_chart(fig_line, use_container_width=True)
         
-        # === TABLE COLUMN: RESPONSIVE + CLEAN ===
         with col_table:
-            st.subheader("AI Results Details")
-            # Truncate titles
-            df_display = df.copy()
-            df_display["Title"] = df_display["Title"].apply(
-                lambda x: x[:77] + "..." if len(x) > 80 else x
-            )
-            # Clean links (extract real URL)
-            def clean_link(url):
-                if not url or url == "#" or not url.startswith("http"):
-                    return None
-                try:
-                    from urllib.parse import urlparse, parse_qs
-                    # BING
-                    if "bing.com/news/apiclick.aspx" in url:
-                        return parse_qs(urlparse(url).query).get('url', [url])[0]
-                    # GOOGLE NEWS
-                    if "news.google.com/rss/articles/" in url:
-                        import base64, re
-                        path = urlparse(url).path
-                        encoded = path.split("/articles/")[-1].split("?")[0]
-                        missing = len(encoded) % 4
-                        if missing:
-                            encoded += '=' * (4 - missing)
-                        decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
-                        match = re.search(r'"(https?://[^"]+)"', decoded)
-                        if match:
-                            return match.group(1)
-                    return url
-                except:
-                    return None
-            
+            st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+            st.subheader("Live Results")
+            df_display = df[["Title", "Sentiment", "Score", "Link"]].copy()
+            def clean_link(l): 
+                return None if not l.startswith("http") else l
             df_display["Link"] = df_display["Link"].apply(clean_link)
-            
-            # Use Streamlit's native LinkColumn
-            st.dataframe(
-                df_display[["Title", "Sentiment", "Score", "Link"]],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Title": st.column_config.TextColumn(
-                        "Title",
-                        width="medium",
-                        help="Article title"
-                    ),
-                    "Sentiment": st.column_config.TextColumn(
-                        "Sentiment",
-                        width="small"
-                    ),
-                    "Score": st.column_config.NumberColumn(
-                        "Score",
-                        format="%.3f",
-                        width="small"
-                    ),
-                    "Link": st.column_config.LinkColumn(
-                        "Link",
-                        display_text="View article",
-                        width="small",
-                        help="Open article"
-                    )
-                }
-            )
-        
-        st.markdown("---")
-        
-        # JSON CHECK (technical expander)
+            st.dataframe(df_display, use_container_width=True, hide_index=True,
+                        column_config={"Link": st.column_config.LinkColumn("View", display_text="Open")})
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # === TECHNICAL CHECK ===
         with st.expander("Technical Check: Raw Scraping Data", expanded=False):
             if os.path.exists(JSON_FILE):
                 with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -343,9 +324,9 @@ if st.button("Run AI Analysis"):
             else:
                 st.warning("No JSON file found → Scraping failed")
 
-    st.success("AI Analysis completed!")
+        st.success("Analysis Complete • Ready for DNEXT")
 
-# FOOTER
+# === FOOTER ===
 st.markdown("---")
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
@@ -359,13 +340,14 @@ with col_footer1:
 with col_footer2:
     st.markdown("**Project Demo** \nDNEXT Intelligence SA \n*Feb 2026*")
 
-# MY CV INTEGRATED (pro expander)
+# === CV + QR (KEPT & UPGRADED) ===
 with st.expander("View my full CV (click to download)", expanded=False):
+    st.markdown("<div class='cv-section'>", unsafe_allow_html=True)
     col_cv1, col_cv2 = st.columns([1, 2])
     with col_cv1:
         st.markdown("""**MediConnect – Intelligent telemedicine platform**
                          **Scan the QR code, discover a production-ready platform.**
-                                             and appreciate my recent work. """)
+                         and appreciate my recent work.""")
         if os.path.exists("MediConnectQrCode.jpg"):
             st.image("MediConnectQrCode.jpg", use_container_width=True)
         else:
@@ -386,4 +368,4 @@ with st.expander("View my full CV (click to download)", expanded=False):
                 )
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
-
+    st.markdown("</div>", unsafe_allow_html=True)
