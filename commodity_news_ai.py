@@ -251,62 +251,103 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
         #  REAL GLOBAL SENTIMENT MAP 
         # Country → (lat, lon) mapping
         country_coords = {
+            # North America
             "us": (37.0902, -95.7129), "usa": (37.0902, -95.7129), "united states": (37.0902, -95.7129),
-            "brazil": (-14.2350, -51.9253),
-            "china": (35.8617, 104.1954),
-            "india": (20.5937, 78.9629),
-            "russia": (61.5240, 105.3188),
-            "eu": (54.5260, 15.2551), "europe": (54.5260, 15.2551),
-            "uk": (55.3781, -3.4360), "britain": (55.3781, -3.4360),
-            "argentina": (-38.4161, -63.6167),
-            "ukraine": (48.3794, 31.1656),
+            "mexico": (23.6345, -102.5528),
             "canada": (56.1304, -106.3468),
-            "australia": (-25.2744, 133.7751),
+            
+            # South America
+            "brazil": (-14.2350, -51.9253),
+            "argentina": (-38.4161, -63.6167),
+            
+            # Europe
+            "uk": (55.3781, -3.4360), "britain": (55.3781, -3.4360), "united kingdom": (55.3781, -3.4360),
+            "russia": (61.5240, 105.3188),
+            "ukraine": (48.3794, 31.1656),
+            "eu": (54.5260, 15.2551), "europe": (54.5260, 15.2551),
             "france": (46.2276, 2.2137),
             "germany": (51.1657, 10.4515),
+            
+            # Asia
+            "china": (35.8617, 104.1954),
+            "india": (20.5937, 78.9629),
+            "japan": (36.2048, 138.2529),
+            "south korea": (35.9078, 127.7669), "korea": (35.9078, 127.7669),
+            "taiwan": (23.6978, 120.9605),
+            
+            # Oceania
+            "australia": (-25.2744, 133.7751),
+            
+            # Africa
+            "egypt": (26.8206, 30.8025),
+            "south africa": (-30.5595, 22.9375),
         }
 
-        # Detect country from title
-        lats, lons, titles, impacts = [], [], [], []
+        # Detect country from title (case-insensitive)
+        lats, lons, titles, impacts, sizes, colors = [], [], [], [], [], []
+        used_countries = set()
+
         for _, row in df.iterrows():
             title_lower = row["Title"].lower()
             detected = False
+            
             for country, (lat, lon) in country_coords.items():
                 if country in title_lower:
+                    if country not in used_countries:
+                        used_countries.add(country)
+                    
                     lats.append(lat)
                     lons.append(lon)
                     titles.append(row["Title"])
+                    
                     impact = (1 if row["Sentiment"] == "Positive" else -1 if row["Sentiment"] == "Negative" else 0) * abs(row["Score"])
                     impacts.append(impact)
+                    
+                    # Size = impact + base
+                    size = max(abs(impact) * 25, 8)
+                    sizes.append(size)
+                    
+                    # Color
+                    if row["Sentiment"] == "Positive":
+                        colors.append("#00D26A")
+                    elif row["Sentiment"] == "Negative":
+                        colors.append("#FF4B4B")
+                    else:
+                        colors.append("#A0A0A0")
+                    
                     detected = True
                     break
+            
+            # If no country → place in Atlantic (neutral)
             if not detected:
-                # Default to global center if no country
                 lats.append(20)
-                lons.append(0)
+                lons.append(-40)
                 titles.append(row["Title"])
                 impacts.append(0)
+                sizes.append(6)
+                colors.append("#666680")
 
-        # Create 3D Globe
+        # === 3D GLOBE ===
         fig_3d = go.Figure(data=go.Scattergeo(
             lon=lons,
             lat=lats,
             text=titles,
             mode='markers',
             marker=dict(
-                size=[abs(i) * 20 + 10 for i in impacts],  # Min size 10
+                size=sizes,
                 color=impacts,
                 colorscale=[[0, '#FF4B4B'], [0.5, '#A0A0A0'], [1, '#00D26A']],
                 cmin=-1, cmax=1,
-                colorbar_title="Sentiment Impact",
-                line_width=1,
-                line_color="white"
+                colorbar=dict(title="Sentiment Impact", thickness=15),
+                line_width=1.5,
+                line_color="white",
+                opacity=0.9
             ),
             hovertemplate="<b>%{text}</b><extra></extra>"
         ))
 
         fig_3d.update_layout(
-            title="Global Sentiment Impact Map",
+            title=f"Global Sentiment Impact ({len(used_countries)} Countries Detected)",
             geo=dict(
                 projection_type='orthographic',
                 showland=True,
@@ -314,15 +355,17 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
                 showocean=True,
                 oceancolor='#0f0f23',
                 showcountries=True,
-                countrycolor='#444',
+                countrycolor='#555',
+                coastlinecolor='#666',
                 bgcolor='rgba(0,0,0,0)'
             ),
             height=520,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=0, r=0, t=40, b=0)
+            margin=dict(l=0, r=0, t=50, b=0),
+            font=dict(family="Inter", color="#e0e0ff")
         )
-
+        
         #   METRICS  
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -376,7 +419,7 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
             else:
                 st.warning("No JSON file found → Scraping failed")
 
-        st.success("Analysis Complete • Ready for DNEXT")
+        st.success("Analysis Complete")
 
 #   FOOTER  
 st.markdown("---")
@@ -421,4 +464,5 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
