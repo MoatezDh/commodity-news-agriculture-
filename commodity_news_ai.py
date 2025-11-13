@@ -1,4 +1,3 @@
-# commodity_news_ai.py
 import random
 import streamlit as st
 import requests
@@ -10,26 +9,26 @@ import time
 import os
 from transformers import pipeline
 
-#  CONFIG 
+# CONFIG
 st.set_page_config(page_title="Commodity News AI - Moatez", layout="wide")
 st.title("Commodity News AI Dashboard")
 st.markdown("**PROJECT Demo – Moatez DHIEB** | EPI SUP | DNEXT Project #1")
 
-#  SIDEBAR 
+# SIDEBAR
 st.sidebar.header("Paramètres")
 commodity = st.sidebar.selectbox("Commodity", ["corn", "wheat", "soybean", "coffee"])
 num_articles = st.sidebar.slider("Articles à analyser", 1, 20, 5)
 
-#  HEADERS 
+# HEADERS
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "en-US,en;q=0.9"
 }
 
-#  FICHIER JSON 
+# FICHIER JSON
 JSON_FILE = "scraped_articles.json"
 
-#  HUGGING FACE MODEL (FINANCIAL NEWS - 100% FONCTIONNEL) 
+# HUGGING FACE MODEL (FINANCIAL NEWS - 100% FONCTIONNEL)
 @st.cache_resource
 def load_sentiment_model():
     try:
@@ -45,72 +44,58 @@ def load_sentiment_model():
         st.warning("→ Fallback simulation activée")
         return None
 
-#  SCRAPING RÉEL SUR BING NEWS RSS 
-@st.cache_data(ttl=1800, show_spinner="Scraping en cours...")
+# SCRAPING RÉEL SUR BING NEWS RSS
+@st.cache_data(ttl=1800)  # Removed invalid show_spinner
 def scrape_bing_news(query, n=5):
     url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
     articles = []
     try:
-        time.sleep(1)
+        time.sleep(1)  # Polite delay
         response = requests.get(url, headers=HEADERS, timeout=10)
         if response.status_code != 200:
-            st.warning(f"HTTP {response.status_code} → Fallback alternatif")
-            return scrape_alternative_rss(query, n)  # Alternative si Bing down
+            st.warning(f"HTTP {response.status_code} → Fallback")
+            return []
         
-        # FIX PARSING : Try XML, fallback HTML
-        try:
-            soup = BeautifulSoup(response.text, 'xml', parser='lxml')
-            items = soup.find_all('item')[:n]
-        except:
-            st.warning("XML parsing échoué → Fallback HTML")
-            soup = BeautifulSoup(response.text, 'html.parser')
-            items = soup.find_all('article')[:n]  # HTML fallback
+        # FIXED PARSING: Use proper lxml-xml for RSS
+        soup = BeautifulSoup(response.text, features="lxml-xml")
+        items = soup.find_all('item')[:n]
         
         if not items:
-            st.warning("Aucun article → Fallback alternatif")
-            return scrape_alternative_rss(query, n)
+            st.warning("Aucun article Bing → Fallback")
+            return []
         
         for item in items:
-            title_tag = item.find('title') or item.find('h3') or item.find('a')
-            link_tag = item.find('link') or item.find('a')
-            if title_tag:
-                title = title_tag.text.strip() if hasattr(title_tag, 'text') else title_tag.get_text(strip=True)
-                link = link_tag['href'] if link_tag and 'href' in link_tag.attrs else "#"
-                articles.append({
-                    "title": title,
-                    "link": link,
-                    "source": "Bing News",
-                    "commodity": commodity,
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                })
+            title = item.find('title').text if item.find('title') else "No title"
+            link = item.find('link').text if item.find('link') else "#"
+            articles.append({
+                "title": title,
+                "link": link,
+                "source": "Bing News",
+                "commodity": query,  # FIXED: Use param, not global
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            })
         
-        # FORCE RE-SAUVE JSON
+        # SAVE JSON
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
         st.success(f"Scraping Bing → {len(articles)} articles sauvés dans `{JSON_FILE}`")
-        return articles[:n]  # Limite n
+        return articles
 
     except Exception as e:
-        st.error(f"Erreur Bing : {e} → Fallback alternatif")
-        
-#  DONNÉES SIMULÉES (fallback) 
-fallback_articles = [
-    {"title": f"{commodity.title()} prices fall due to strong harvest", "link": "https://reuters.com", "source": "Simulé"},
-    {"title": f"Brazil boosts {commodity} exports", "link": "https://bloomberg.com", "source": "Simulé"},
-    {"title": f"EU imposes new tariffs on {commodity}", "link": "https://euronews.com", "source": "Simulé"}
-]
+        st.error(f"Erreur Bing : {e} → Fallback")
+        return []  # FIXED: No call to undefined func
 
-#  ANALYSE IA (HF FINANCIER) 
+# ANALYSE IA (HF FINANCIER)
 def analyze_sentiment(title, model):
     if model:
         try:
             res = model(title)[0]
             label = res['label'].lower()
             score = res['score']
-            if label == "negative": 
+            if label == "negative":
                 score = -score
                 sentiment_fr = "Négative"
-            elif label == "positive": 
+            elif label == "positive":
                 sentiment_fr = "Positive"
             else:  # neutral
                 score = 0
@@ -124,14 +109,21 @@ def analyze_sentiment(title, model):
         pos = ["rise", "boost", "record", "strong", "surge", "high"]
         neg = ["fall", "drop", "drought", "threat", "tariff", "low"]
         t = title.lower()
-        if any(w in t for w in pos): 
+        if any(w in t for w in pos):
             return "Positive", round(random.uniform(0.6, 0.95), 3)
-        if any(w in t for w in neg): 
+        if any(w in t for w in neg):
             return "Négative", round(random.uniform(-0.95, -0.6), 3)
         return "Neutre", 0.0
 
 if st.button("Lancer l'analyse IA"):
     with st.spinner("Scraping Bing News + Analyse IA (Hugging Face Financial)..."):
+        # FIXED: Dynamic fallback inside button (uses current commodity)
+        fallback_articles = [
+            {"title": f"{commodity.title()} prices fall due to strong harvest", "link": "https://reuters.com", "source": "Simulé"},
+            {"title": f"Brazil boosts {commodity} exports", "link": "https://bloomberg.com", "source": "Simulé"},
+            {"title": f"EU imposes new tariffs on {commodity}", "link": "https://euronews.com", "source": "Simulé"}
+        ]
+        
         real_articles = scrape_bing_news(commodity, num_articles)
         articles = real_articles if real_articles else fallback_articles[:num_articles]
         
@@ -149,10 +141,10 @@ if st.button("Lancer l'analyse IA"):
         
         df = pd.DataFrame(results)
         
-        #  DASHBOARD  STYLE 
+        # DASHBOARD STYLE
         st.markdown("---")
         
-        #  HEADER STATS 
+        # HEADER STATS
         col_stats1, col_stats2, col_stats3 = st.columns(3)
         with col_stats1:
             st.metric(
@@ -177,7 +169,7 @@ if st.button("Lancer l'analyse IA"):
 
         st.markdown("---")
 
-        #  CHART + TABLEAU 
+        # CHART + TABLEAU
         col_chart, col_table = st.columns([2, 1], gap="large")
 
         with col_chart:
@@ -223,7 +215,7 @@ if st.button("Lancer l'analyse IA"):
 
         st.markdown("---")
 
-        #  JSON CHECK 
+        # JSON CHECK (expander pro)
         with st.expander("Check technique : Données brutes (scraping)", expanded=False):
             if os.path.exists(JSON_FILE):
                 with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -235,7 +227,7 @@ if st.button("Lancer l'analyse IA"):
 
     st.success("Analyse IA terminée !")
 
-#  FOOTER
+# FOOTER
 st.markdown("---")
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
@@ -247,16 +239,19 @@ with col_footer1:
         """
     )
 with col_footer2:
-    st.markdown("**Projet Demo**  \nDNEXT Intelligence SA  \n*Fév  2026*")
+    st.markdown("**Projet Demo**  \nDNEXT Intelligence SA  \n*Fév 2026*")
 
-#  MON CV INTÉGRÉ 
+# MON CV INTÉGRÉ (expander pro)
 with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=False):
     col_cv1, col_cv2 = st.columns([1, 2])
     with col_cv1:
         st.markdown("""**MediConnect – Plateforme de télémédecine intelligente**
                          **Scanne le QR code, découvre une plateforme prête pour la production.**
                                              et apprécier le travail """)
-        st.image("MediConnectQrCode.jpg", use_container_width=True)
+        if os.path.exists("MediConnectQrCode.jpg"):
+            st.image("MediConnectQrCode.jpg", use_container_width=True)
+        else:
+            st.warning("Fichier QR manquant → Ajoute `MediConnectQrCode.jpg`")
     with col_cv2:
         st.markdown("### **Moatez DHIEB**")
         st.markdown("**Software Engineer | Data Science | Full-Stack**")
@@ -272,8 +267,4 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                     use_container_width=True
                 )
         else:
-
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
-
-
-
