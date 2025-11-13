@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from transformers import pipeline
 
-# === PAGE CONFIG ===
+#   PAGE CONFIG  
 st.set_page_config(
     page_title="Commodity News AI - Moatez Dhieb",
     page_icon="Chart increasing",
@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# === PRO CSS: GLASSMORPHISM + IMPACT ===
+#   PRO CSS: GLASSMORPHISM + IMPACT  
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -107,16 +107,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# === HEADER ===
+#   HEADER  
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.markdown('<h1 class="header-title">Commodity News AI</h1>', unsafe_allow_html=True)
     st.markdown('<p class="header-subtitle">Real-time Financial Sentiment Intelligence | Powered by Hugging Face</p>', unsafe_allow_html=True)
 
-# === LIVE CLOCK ===
+#   LIVE CLOCK  
 st.markdown(f'<div class="live-clock">Live Analysis • {datetime.now().strftime("%H:%M:%S")} UTC</div>', unsafe_allow_html=True)
 
-# === SIDEBAR ===
+#   SIDEBAR  
 with st.sidebar:
     st.image("https://via.placeholder.com/150x50/00D26A/ffffff?text=DNEXT", use_column_width=True)
     st.markdown("### Control Panel")
@@ -129,14 +129,14 @@ with st.sidebar:
         st.session_state.model_loaded = False
     st.markdown(f"**Hugging Face Model:** {'Active' if st.session_state.model_loaded else 'Loading...'}")
 
-# === HEADERS & FILES ===
+#   HEADERS & FILES  
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "en-US,en;q=0.9"
 }
 JSON_FILE = "scraped_articles.json"
 
-# === MODEL LOADING ===
+#   MODEL LOADING  
 @st.cache_resource
 def load_sentiment_model():
     try:
@@ -151,7 +151,7 @@ def load_sentiment_model():
         st.error(f"Model Error: {e}")
         return None
 
-# === SCRAPING ===
+#   SCRAPING  
 if 'scrape_counter' not in st.session_state:
     st.session_state.scrape_counter = 0
 
@@ -211,7 +211,7 @@ def scrape_news(query, n=5):
         st.session_state[cache_key] = articles
     return articles
 
-# === MAIN ANALYSIS BUTTON ===
+#   MAIN ANALYSIS BUTTON  
 if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
     st.session_state.scrape_counter += 1
     with st.spinner("Scraping • Analyzing • Visualizing..."):
@@ -248,30 +248,82 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
             })
         df = pd.DataFrame(results)
 
-        # === 3D GLOBE ===
-        sentiment_map = {"Positive": 1, "Negative": -1, "Neutral": 0}
-        df['Impact'] = df['Sentiment'].map(sentiment_map) * df['Score'].abs()
-        
+        #  REAL GLOBAL SENTIMENT MAP 
+        # Country → (lat, lon) mapping
+        country_coords = {
+            "us": (37.0902, -95.7129), "usa": (37.0902, -95.7129), "united states": (37.0902, -95.7129),
+            "brazil": (-14.2350, -51.9253),
+            "china": (35.8617, 104.1954),
+            "india": (20.5937, 78.9629),
+            "russia": (61.5240, 105.3188),
+            "eu": (54.5260, 15.2551), "europe": (54.5260, 15.2551),
+            "uk": (55.3781, -3.4360), "britain": (55.3781, -3.4360),
+            "argentina": (-38.4161, -63.6167),
+            "ukraine": (48.3794, 31.1656),
+            "canada": (56.1304, -106.3468),
+            "australia": (-25.2744, 133.7751),
+            "france": (46.2276, 2.2137),
+            "germany": (51.1657, 10.4515),
+        }
+
+        # Detect country from title
+        lats, lons, titles, impacts = [], [], [], []
+        for _, row in df.iterrows():
+            title_lower = row["Title"].lower()
+            detected = False
+            for country, (lat, lon) in country_coords.items():
+                if country in title_lower:
+                    lats.append(lat)
+                    lons.append(lon)
+                    titles.append(row["Title"])
+                    impact = (1 if row["Sentiment"] == "Positive" else -1 if row["Sentiment"] == "Negative" else 0) * abs(row["Score"])
+                    impacts.append(impact)
+                    detected = True
+                    break
+            if not detected:
+                # Default to global center if no country
+                lats.append(20)
+                lons.append(0)
+                titles.append(row["Title"])
+                impacts.append(0)
+
+        # Create 3D Globe
         fig_3d = go.Figure(data=go.Scattergeo(
-            lon = [10, -50, -70, 40, 100],
-            lat = [30, -10, -20, 50, 35],
-            text = df['Title'],
-            mode = 'markers',
-            marker = dict(
-                size = df['Score'].abs() * 15,
-                color = df['Impact'],
-                colorscale = [[0, '#FF4B4B'], [0.5, '#A0A0A0'], [1, '#00D26A']],
-                cmin = -1, cmax = 1,
-                colorbar_title = "Sentiment Impact"
-            )
+            lon=lons,
+            lat=lats,
+            text=titles,
+            mode='markers',
+            marker=dict(
+                size=[abs(i) * 20 + 10 for i in impacts],  # Min size 10
+                color=impacts,
+                colorscale=[[0, '#FF4B4B'], [0.5, '#A0A0A0'], [1, '#00D26A']],
+                cmin=-1, cmax=1,
+                colorbar_title="Sentiment Impact",
+                line_width=1,
+                line_color="white"
+            ),
+            hovertemplate="<b>%{text}</b><extra></extra>"
         ))
+
         fig_3d.update_layout(
-            title = "Global Sentiment Impact",
-            geo = dict(projection_type='orthographic', showland=True, landcolor='lightgray'),
-            height=500, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+            title="Global Sentiment Impact Map",
+            geo=dict(
+                projection_type='orthographic',
+                showland=True,
+                landcolor='#2d2d44',
+                showocean=True,
+                oceancolor='#0f0f23',
+                showcountries=True,
+                countrycolor='#444',
+                bgcolor='rgba(0,0,0,0)'
+            ),
+            height=520,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=40, b=0)
         )
 
-        # === METRICS ===
+        #   METRICS  
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"<div class='glass-card metric-card'><h3>{len(df)}</h3><p>Articles</p></div>", unsafe_allow_html=True)
@@ -286,7 +338,7 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
             color = "#00D26A" if avg > 0 else "#FF4B4B" if avg < 0 else "#A0A0A0"
             st.markdown(f"<div class='glass-card metric-card' style='border-left-color:{color}'><h3>{avg:+.3f}</h3><p>Avg Score</p></div>", unsafe_allow_html=True)
 
-        # === CHARTS + TABLE ===
+        #   CHARTS + TABLE  
         col_chart, col_table = st.columns([2, 1], gap="large")
         with col_chart:
             tab1, tab2, tab3 = st.tabs(["3D Globe", "Bar Impact", "Trend Line"])
@@ -314,7 +366,7 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
                         column_config={"Link": st.column_config.LinkColumn("View", display_text="Open")})
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # === TECHNICAL CHECK ===
+        #   TECHNICAL CHECK  
         with st.expander("Technical Check: Raw Scraping Data", expanded=False):
             if os.path.exists(JSON_FILE):
                 with open(JSON_FILE, "r", encoding="utf-8") as f:
@@ -326,7 +378,7 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
 
         st.success("Analysis Complete • Ready for DNEXT")
 
-# === FOOTER ===
+#   FOOTER  
 st.markdown("---")
 col_footer1, col_footer2 = st.columns([3, 1])
 with col_footer1:
@@ -340,7 +392,7 @@ with col_footer1:
 with col_footer2:
     st.markdown("**Project Demo** \nDNEXT Intelligence SA \n*Feb 2026*")
 
-# === CV + QR (KEPT & UPGRADED) ===
+#   CV + QR (KEPT & UPGRADED)  
 with st.expander("View my full CV (click to download)", expanded=False):
     st.markdown("<div class='cv-section'>", unsafe_allow_html=True)
     col_cv1, col_cv2 = st.columns([1, 2])
@@ -369,3 +421,4 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
