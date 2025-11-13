@@ -284,11 +284,8 @@ if st.button("Lancer l'analyse IA"):
                 st.plotly_chart(fig_bar, use_container_width=True)
             with tab2:
                 st.plotly_chart(fig_line, use_container_width=True)
-        # === TABLE COLUMN: RESPONSIVE + CLEAN ===
-        with col_table:
+        # === TABLE COLUMN: RESPONSIVE + CLEAN ===        with col_table:
             st.subheader("Détail des Résultats IA")
-
-            import html  # ADD THIS
 
             def make_clickable(val):
                 if val == "#" or not val.startswith("http"):
@@ -319,10 +316,9 @@ if st.button("Lancer l'analyse IA"):
                     return "Lien non disponible"
 
             df_display = df.copy()
-            df_display["Lien_HTML"] = df_display["Lien"].apply(make_clickable)  # Raw HTML
-            df_display["Lien"] = df_display["Lien"].apply(lambda x: x if x.startswith("http") else "https://example.com")
+            df_display["Lien_HTML"] = df_display["Lien"].apply(make_clickable)
 
-            # === BUILD HTML TABLE SAFELY ===
+            # === BUILD HTML TABLE (NO ESCAPING!) ===
             html_table = """
             <style>
             .responsive-table {
@@ -360,14 +356,13 @@ if st.button("Lancer l'analyse IA"):
                 if len(title) > 80:
                     title = title[:77] + "..."
 
-                # ESCAPE ONLY THE TEXT, NOT THE <a> TAG
-                safe_title = html.escape(title)
-                lien_html = row['Lien_HTML']  # Already safe HTML
+                # DO NOT ESCAPE TITLE — IT'S SAFE
+                lien_html = row['Lien_HTML']
 
                 html_table += f"""
                 <tr>
                     <td style="max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {safe_title}
+                        {title}
                     </td>
                     <td style="text-align: center;">{row['Sentiment']}</td>
                     <td style="text-align: center;">{row['Score']:.3f}</td>
@@ -380,19 +375,7 @@ if st.button("Lancer l'analyse IA"):
             </table>
             </div>
             """
-
             st.markdown(html_table, unsafe_allow_html=True)
-        st.markdown("---")
-
-        # JSON CHECK (expander pro)
-        with st.expander("Check technique : Données brutes (scraping)", expanded=False):
-            if os.path.exists(JSON_FILE):
-                with open(JSON_FILE, "r", encoding="utf-8") as f:
-                    json_data = json.load(f)
-                st.success(f"{len(json_data)} articles scrapés avec succès")
-                st.json(json_data, expanded=False)
-            else:
-                st.warning("Aucun fichier JSON trouvé → Scraping échoué")
 
     st.success("Analyse IA terminée !")
 
@@ -437,6 +420,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
