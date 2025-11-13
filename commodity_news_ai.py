@@ -273,77 +273,102 @@ if st.button("Lancer l'analyse IA"):
         with col_table:
             st.subheader("Détail des Résultats IA")
 
-            # Clean links
+            # === ULTIMATE make_clickable: Google + Bing + Clean ===
             def make_clickable(val):
                 if val == "#" or not val.startswith("http"):
                     return "Lien non disponible"
-                if "bing.com" in val or "google.com" in val:
-                    try:
-                        from urllib.parse import parse_qs, urlparse
-                        parsed = urlparse(val)
-                        real = parse_qs(parsed.query).get('url', [val])[0]
-                        val = real
-                    except:
-                        pass
-                return f'<a href="{val}" target="_blank" style="color:#00D26A; text-decoration:none;">Voir</a>'
+                try:
+                    from urllib.parse import urlparse, parse_qs
+                    # BING
+                    if "bing.com/news/apiclick.aspx" in val:
+                        real = parse_qs(urlparse(val).query).get('url', [val])[0]
+                        return f'<a href="{real}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
+                    # GOOGLE NEWS RSS
+                    if "news.google.com/rss/articles/" in val:
+                        import base64, re
+                        path = urlparse(val).path
+                        encoded = path.split("/articles/")[-1].split("?")[0]
+                        missing = len(encoded) % 4
+                        if missing:
+                            encoded += '=' * (4 - missing)
+                        try:
+                            decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
+                            match = re.search(r'"(https?://[^"]+)"', decoded)
+                            if match:
+                                return f'<a href="{match.group(1)}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
+                        except:
+                            pass
+                    # CLEAN URL
+                    return f'<a href="{val}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
+                except:
+                    return "Lien non disponible"
 
             df_display = df.copy()
             df_display["Lien"] = df_display["Lien"].apply(make_clickable)
 
-            # RESPONSIVE HTML TABLE
+            # === RESPONSIVE TABLE ===
             html_table = """
             <style>
             .responsive-table {
                 width: 100%;
                 border-collapse: collapse;
-                font-size: 0.9em;
-                overflow-x: auto;
+                font-size: 0.85em;
                 display: block;
+                overflow-x: auto;
                 white-space: nowrap;
             }
             .responsive-table th, .responsive-table td {
-                padding: 8px 6px;
+                padding: 10px 8px;
                 text-align: left;
-                border-bottom: 1px solid #ddd;
+                border-bottom: 1px solid #eee;
+                min-width: 80px;
             }
             .responsive-table th {
-                background-color: #f2f2f2;
-                font-weight: bold;
+                background-color: #f8f9fa;
+                font-weight: 600;
+                position: sticky;
+                top: 0;
+                z-index: 1;
             }
             .responsive-table tr:hover {
-                background-color: #f5f5f5;
+                background-color: #f1f3f5;
+            }
+            .responsive-table a {
+                color: #00D26A !important;
+                font-weight: 500;
             }
             @media (max-width: 768px) {
-                .responsive-table {
-                    font-size: 0.8em;
-                }
+                .responsive-table {font-size: 0.75em;}
+                .responsive-table th, .responsive-table td {padding: 6px 4px;}
             }
             </style>
-            <div style="max-height: 600px; overflow-y: auto; overflow-x: auto;">
+            <div style="max-height: 550px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px;">
             <table class="responsive-table">
-                <thead><tr>
-                    <th>Titre</th>
-                    <th>Sentiment</th>
-                    <th>Score</th>
-                    <th>Lien</th>
-                </tr></thead>
+                <thead>
+                    <tr>
+                        <th style="width: 55%;">Titre</th>
+                        <th style="width: 15%;">Sentiment</th>
+                        <th style="width: 15%;">Score</th>
+                        <th style="width: 15%;">Lien</th>
+                    </tr>
+                </thead>
                 <tbody>
             """
 
             for _, row in df_display.iterrows():
+                title = row['Titre']
+                if len(title) > 80:
+                    title = title[:77] + "..."
                 html_table += f"""
                 <tr>
-                    <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {row['Titre']}
-                    </td>
-                    <td>{row['Sentiment']}</td>
-                    <td>{row['Score']:.3f}</td>
-                    <td>{row['Lien']}</td>
+                    <td style="max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{title}</td>
+                    <td style="text-align: center;">{row['Sentiment']}</td>
+                    <td style="text-align: center;">{row['Score']:.3f}</td>
+                    <td style="text-align: center;">{row['Lien']}</td>
                 </tr>
                 """
 
             html_table += "</tbody></table></div>"
-
             st.markdown(html_table, unsafe_allow_html=True)
         st.markdown("---")
 
@@ -400,6 +425,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
