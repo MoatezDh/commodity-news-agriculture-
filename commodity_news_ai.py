@@ -365,7 +365,7 @@ with st.expander("View my full CV (click to download)", expanded=False):
     with col_cv1:
         st.markdown("""**MediConnect – Intelligent telemedicine platform**
                          **Scan the QR code, discover a production-ready platform.**
-                                             and appreciate the work """)
+                                             and appreciate my recent work. """)
         if os.path.exists("MediConnectQrCode.jpg"):
             st.image("MediConnectQrCode.jpg", use_container_width=True)
         else:
@@ -386,3 +386,4 @@ with st.expander("View my full CV (click to download)", expanded=False):
                 )
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
+
