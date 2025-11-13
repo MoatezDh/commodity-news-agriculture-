@@ -17,7 +17,7 @@ st.markdown("**PROJECT Demo – Moatez DHIEB** | EPI SUP | DNEXT Project #1")
 # SIDEBAR
 st.sidebar.header("Paramètres")
 commodity = st.sidebar.selectbox("Commodity", ["corn", "wheat", "soybean", "coffee"])
-num_articles = st.sidebar.slider("Articles à analyser", 1, 20, 5)
+num_articles = st.sidebar.slider("Articles à analyser", 1, 50, 5)
 
 # HEADERS
 HEADERS = {
@@ -326,6 +326,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
