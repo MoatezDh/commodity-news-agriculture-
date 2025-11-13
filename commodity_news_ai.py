@@ -284,99 +284,71 @@ if st.button("Lancer l'analyse IA"):
                 st.plotly_chart(fig_bar, use_container_width=True)
             with tab2:
                 st.plotly_chart(fig_line, use_container_width=True)
-        # === TABLE COLUMN: RESPONSIVE + CLEAN ===        with col_table:
+        #  TABLE COLUMN: RESPONSIVE + CLEAN         
+        with col_table:
             st.subheader("Détail des Résultats IA")
 
-            def make_clickable(val):
-                if val == "#" or not val.startswith("http"):
-                    return "Lien non disponible"
+            # Truncate titles
+            df_display = df.copy()
+            df_display["Titre"] = df_display["Titre"].apply(
+                lambda x: x[:77] + "..." if len(x) > 80 else x
+            )
+
+            # Clean links (extract real URL)
+            def clean_link(url):
+                if not url or url == "#" or not url.startswith("http"):
+                    return None
                 try:
                     from urllib.parse import urlparse, parse_qs
                     # BING
-                    if "bing.com/news/apiclick.aspx" in val:
-                        real = parse_qs(urlparse(val).query).get('url', [val])[0]
-                        return f'<a href="{real}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
+                    if "bing.com/news/apiclick.aspx" in url:
+                        return parse_qs(urlparse(url).query).get('url', [url])[0]
                     # GOOGLE NEWS
-                    if "news.google.com/rss/articles/" in val:
+                    if "news.google.com/rss/articles/" in url:
                         import base64, re
-                        path = urlparse(val).path
+                        path = urlparse(url).path
                         encoded = path.split("/articles/")[-1].split("?")[0]
                         missing = len(encoded) % 4
                         if missing:
                             encoded += '=' * (4 - missing)
-                        try:
-                            decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
-                            match = re.search(r'"(https?://[^"]+)"', decoded)
-                            if match:
-                                return f'<a href="{match.group(1)}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
-                        except:
-                            pass
-                    return f'<a href="{val}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
+                        decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
+                        match = re.search(r'"(https?://[^"]+)"', decoded)
+                        if match:
+                            return match.group(1)
+                    return url
                 except:
-                    return "Lien non disponible"
+                    return None
 
-            df_display = df.copy()
-            df_display["Lien_HTML"] = df_display["Lien"].apply(make_clickable)
+            df_display["Lien"] = df_display["Lien"].apply(clean_link)
 
-            # === BUILD HTML TABLE (NO ESCAPING!) ===
-            html_table = """
-            <style>
-            .responsive-table {
-                width: 100%; border-collapse: collapse; font-size: 0.85em;
-                display: block; overflow-x: auto; white-space: nowrap;
-            }
-            .responsive-table th, .responsive-table td {
-                padding: 10px 8px; text-align: left; border-bottom: 1px solid #eee; min-width: 80px;
-            }
-            .responsive-table th {
-                background-color: #f8f9fa; font-weight: 600; position: sticky; top: 0; z-index: 1;
-            }
-            .responsive-table tr:hover { background-color: #f1f3f5; }
-            .responsive-table a { color: #00D26A !important; font-weight: 500; }
-            @media (max-width: 768px) {
-                .responsive-table { font-size: 0.75em; }
-                .responsive-table th, .responsive-table td { padding: 6px 4px; }
-            }
-            </style>
-            <div style="max-height: 550px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px;">
-            <table class="responsive-table">
-                <thead>
-                    <tr>
-                        <th style="width: 55%;">Titre</th>
-                        <th style="width: 15%;">Sentiment</th>
-                        <th style="width: 15%;">Score</th>
-                        <th style="width: 15%;">Lien</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-
-            for _, row in df_display.iterrows():
-                title = row['Titre']
-                if len(title) > 80:
-                    title = title[:77] + "..."
-
-                # DO NOT ESCAPE TITLE — IT'S SAFE
-                lien_html = row['Lien_HTML']
-
-                html_table += f"""
-                <tr>
-                    <td style="max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {title}
-                    </td>
-                    <td style="text-align: center;">{row['Sentiment']}</td>
-                    <td style="text-align: center;">{row['Score']:.3f}</td>
-                    <td style="text-align: center;">{lien_html}</td>
-                </tr>
-                """
-
-            html_table += """
-                </tbody>
-            </table>
-            </div>
-            """
-            st.markdown(html_table, unsafe_allow_html=True)
-
+            # Use Streamlit's native LinkColumn
+            st.dataframe(
+                df_display[["Titre", "Sentiment", "Score", "Lien"]],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Titre": st.column_config.TextColumn(
+                        "Titre",
+                        width="medium",
+                        help="Titre de l'article"
+                    ),
+                    "Sentiment": st.column_config.TextColumn(
+                        "Sentiment",
+                        width="small"
+                    ),
+                    "Score": st.column_config.NumberColumn(
+                        "Score",
+                        format="%.3f",
+                        width="small"
+                    ),
+                    "Lien": st.column_config.LinkColumn(
+                        "Lien",
+                        display_text="Voir l'article",
+                        width="small",
+                        help="Ouvrir l'article"
+                    )
+                }
+            )
     st.success("Analyse IA terminée !")
 
 # FOOTER
@@ -420,6 +392,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
