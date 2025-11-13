@@ -45,46 +45,81 @@ def load_sentiment_model():
         return None
 
 # SCRAPING RÉEL SUR BING NEWS RSS
-@st.cache_data(ttl=1800)  # Removed invalid show_spinner
-def scrape_bing_news(query, n=5):
-    url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
+@st.cache_data(ttl=600)  # 10 min cache (fresh data)
+def scrape_news(query, n=5):
     articles = []
+    
+    # TRY GOOGLE FIRST (more results)
+    url = f"https://news.google.com/rss/search?q={query}+price+when:1d&hl=en-US&gl=US&ceid=US:en"
     try:
-        time.sleep(1)  # Polite delay
+        time.sleep(1)
         response = requests.get(url, headers=HEADERS, timeout=10)
-        if response.status_code != 200:
-            st.warning(f"HTTP {response.status_code} → Fallback")
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'xml')
+            items = soup.find_all('item')
+            st.info(f"Google News: {len(items)} articles trouvés")
+        else:
+            raise Exception("Google failed")
+    except:
+        # FALLBACK: BING
+        st.warning("Google échoué → Fallback Bing")
+        url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
+        try:
+            response = requests.get(url, headers=HEADERS, timeout=10)
+            if response.status_code != 200:
+                raise Exception("Bing failed")
+            soup = BeautifulSoup(response.text, 'xml')
+            items = soup.find_all('item')
+            st.info(f"Bing: {len(items)} articles trouvés")
+        except Exception as e:
+            st.error(f"Scraping échoué: {e}")
             return []
-        
-        # FIXED PARSING: Use proper lxml-xml for RSS
-        soup = BeautifulSoup(response.text, features="lxml-xml")
-        items = soup.find_all('item')[:n]
-        
-        if not items:
-            st.warning("Aucun article Bing → Fallback")
-            return []
-        
-        for item in items:
-            title = item.find('title').text if item.find('title') else "No title"
-            link = item.find('link').text if item.find('link') else "#"
-            articles.append({
-                "title": title,
-                "link": link,
-                "source": "Bing News",
-                "commodity": query,  # FIXED: Use param, not global
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            })
-        
-        # SAVE JSON
+
+    # FILTER & CLEAN
+    valid = []
+    for item in items:
+        title_tag = item.find('title')
+        link_tag = item.find('link')
+        if not title_tag or not link_tag:
+            continue
+        title = title_tag.text.strip()
+        link = link_tag.text.strip()
+
+        # Skip junk
+        if any(x in title.lower() for x in ["video", "watch", "live", "youtube", "podcast"]):
+            continue
+        if len(title) < 25:
+            continue
+
+        # Clean Google link (remove tracking)
+        if "news.google.com" in link:
+            try:
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(link)
+                real = parse_qs(parsed.query).get('url', [link])[0]
+                link = real
+            except:
+                pass
+
+        valid.append({
+            "title": title,
+            "link": link,
+            "source": "Google News" if "google" in url else "Bing News",
+            "commodity": query,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+    articles = valid[:n]  # Now cap
+
+    # SAVE JSON
+    if articles:
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
-        st.success(f"Scraping Bing → {len(articles)} articles sauvés dans `{JSON_FILE}`")
-        return articles
+        st.success(f"{len(articles)} articles sauvés → {JSON_FILE}")
+    else:
+        st.warning("Aucun article valide → Fallback simulé")
 
-    except Exception as e:
-        st.error(f"Erreur Bing : {e} → Fallback")
-        return []  # FIXED: No call to undefined func
-
+    return articles
 # ANALYSE IA (HF FINANCIER)
 def analyze_sentiment(title, model):
     if model:
@@ -291,4 +326,5 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
