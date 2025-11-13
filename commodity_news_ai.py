@@ -114,6 +114,20 @@ def analyze_sentiment(title, model):
         if any(w in t for w in neg):
             return "Négative", round(random.uniform(-0.95, -0.6), 3)
         return "Neutre", 0.0
+def make_clickable(url):
+    if url == "#" or not url.startswith("http"):
+        return "Lien non disponible"
+    # Clean Bing redirect: extract real URL from 'url=' param
+    if "bing.com/news/apiclick.aspx" in url:
+        try:
+            from urllib.parse import parse_qs, urlparse
+            parsed = urlparse(url)
+            real_url = parse_qs(parsed.query).get('url', [url])[0]
+            if real_url:
+                url = real_url
+        except:
+            pass  # fallback to original
+    return f'<a href="{url}" target="_blank">Voir l\'article</a>'
 
 if st.button("Lancer l'analyse IA"):
     with st.spinner("Scraping Bing News + Analyse IA (Hugging Face Financial)..."):
@@ -197,20 +211,29 @@ if st.button("Lancer l'analyse IA"):
 
         with col_table:
             st.subheader("Détail des Résultats IA")
-            # Style tableau
+        
+            # Helper to make clickable + clean Bing URLs
+            def make_clickable(val):
+                if val == "#" or not val.startswith("http"):
+                    return "Lien non disponible"
+                # Extract real URL from Bing redirect
+                if "bing.com/news/apiclick.aspx" in val:
+                    try:
+                        from urllib.parse import parse_qs, urlparse
+                        parsed = urlparse(val)
+                        real = parse_qs(parsed.query).get('url', [val])[0]
+                        val = real
+                    except:
+                        pass
+                return f'<a href="{val}" target="_blank">Voir l\'article</a>'
+        
             df_display = df.copy()
-            df_display["Lien"] = df_display["Lien"].apply(
-                lambda x: f"[Voir l'article]({x})" if x != "#" and "http" in x else "Lien non disponible"
-            )
-            st.dataframe(
-                df_display,
-                use_container_width=True,
-                column_config={
-                    "Titre": st.column_config.TextColumn("Titre", width="medium"),
-                    "Sentiment": st.column_config.TextColumn("Sentiment", width="small"),
-                    "Score": st.column_config.NumberColumn("Score IA", format="%.3f"),
-                    "Lien": st.column_config.LinkColumn("Source", width="small")
-                }
+            df_display["Lien"] = df_display["Lien"].apply(make_clickable)
+        
+            # Render as HTML to allow <a> tags
+            st.markdown(
+                df_display[["Titre", "Sentiment", "Score", "Lien"]].to_html(escape=False, index=False),
+                unsafe_allow_html=True
             )
 
         st.markdown("---")
@@ -268,3 +291,4 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
