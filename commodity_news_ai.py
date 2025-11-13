@@ -45,11 +45,21 @@ def load_sentiment_model():
         return None
 
 # SCRAPING RÉEL SUR BING NEWS RSS
-@st.cache_data(ttl=600)  # 10 min cache (fresh data)
+# ADD AT TOP
+if 'scrape_counter' not in st.session_state:
+    st.session_state.scrape_counter = 0
+
+# REPLACE scrape_news
 def scrape_news(query, n=5):
-    articles = []
+    # Unique key forces fresh scrape
+    cache_key = f"{query}_{n}_{st.session_state.scrape_counter}"
     
-    # TRY GOOGLE FIRST (more results)
+    if cache_key in st.session_state:
+        articles = st.session_state[cache_key]
+        st.info(f"Chargé depuis mémoire ({len(articles)} articles)")
+        return articles
+
+    articles = []
     url = f"https://news.google.com/rss/search?q={query}+price+when:1d&hl=en-US&gl=US&ceid=US:en"
     try:
         time.sleep(1)
@@ -61,7 +71,6 @@ def scrape_news(query, n=5):
         else:
             raise Exception("Google failed")
     except:
-        # FALLBACK: BING
         st.warning("Google échoué → Fallback Bing")
         url = f"https://www.bing.com/news/search?q={query}+price&format=rss"
         try:
@@ -75,7 +84,6 @@ def scrape_news(query, n=5):
             st.error(f"Scraping échoué: {e}")
             return []
 
-    # FILTER & CLEAN
     valid = []
     for item in items:
         title_tag = item.find('title')
@@ -85,19 +93,25 @@ def scrape_news(query, n=5):
         title = title_tag.text.strip()
         link = link_tag.text.strip()
 
-        # Skip junk
         if any(x in title.lower() for x in ["video", "watch", "live", "youtube", "podcast"]):
             continue
         if len(title) < 25:
             continue
 
-        # Clean Google link (remove tracking)
-        if "news.google.com" in link:
+        # CLEAN GOOGLE LINK
+        if "news.google.com/rss/articles/" in link:
             try:
-                from urllib.parse import urlparse, parse_qs
-                parsed = urlparse(link)
-                real = parse_qs(parsed.query).get('url', [link])[0]
-                link = real
+                import base64, re
+                from urllib.parse import urlparse
+                path = urlparse(link).path
+                encoded = path.split("/articles/")[-1].split("?")[0]
+                missing = len(encoded) % 4
+                if missing:
+                    encoded += '=' * (4 - missing)
+                decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
+                match = re.search(r'"(https?://[^"]+)"', decoded)
+                if match:
+                    link = match.group(1)
             except:
                 pass
 
@@ -109,15 +123,15 @@ def scrape_news(query, n=5):
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
         })
 
-    articles = valid[:n]  # Now cap
+    articles = valid[:n]
 
-    # SAVE JSON
     if articles:
         with open(JSON_FILE, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
         st.success(f"{len(articles)} articles sauvés → {JSON_FILE}")
+        st.session_state[cache_key] = articles
     else:
-        st.warning("Aucun article valide → Fallback simulé")
+        st.warning("Aucun article valide")
 
     return articles
 # ANALYSE IA (HF FINANCIER)
@@ -165,6 +179,7 @@ def make_clickable(url):
     return f'<a href="{url}" target="_blank">Voir l\'article</a>'
 
 if st.button("Lancer l'analyse IA"):
+    st.session_state.scrape_counter += 1  # FORCE FRESH
     with st.spinner("Scraping Bing News + Analyse IA (Hugging Face Financial)..."):
         # FIXED: Dynamic fallback inside button (uses current commodity)
         fallback_articles = [
@@ -273,7 +288,8 @@ if st.button("Lancer l'analyse IA"):
         with col_table:
             st.subheader("Détail des Résultats IA")
 
-            # === ULTIMATE make_clickable: Google + Bing + Clean ===
+            import html  # ADD THIS
+
             def make_clickable(val):
                 if val == "#" or not val.startswith("http"):
                     return "Lien non disponible"
@@ -283,7 +299,7 @@ if st.button("Lancer l'analyse IA"):
                     if "bing.com/news/apiclick.aspx" in val:
                         real = parse_qs(urlparse(val).query).get('url', [val])[0]
                         return f'<a href="{real}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
-                    # GOOGLE NEWS RSS
+                    # GOOGLE NEWS
                     if "news.google.com/rss/articles/" in val:
                         import base64, re
                         path = urlparse(val).path
@@ -298,48 +314,32 @@ if st.button("Lancer l'analyse IA"):
                                 return f'<a href="{match.group(1)}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
                         except:
                             pass
-                    # CLEAN URL
                     return f'<a href="{val}" target="_blank" style="color:#00D26A; text-decoration:none; font-weight:500;">Voir</a>'
                 except:
                     return "Lien non disponible"
 
             df_display = df.copy()
-            df_display["Lien"] = df_display["Lien"].apply(make_clickable)
+            df_display["Lien_HTML"] = df_display["Lien"].apply(make_clickable)  # Raw HTML
+            df_display["Lien"] = df_display["Lien"].apply(lambda x: x if x.startswith("http") else "https://example.com")
 
-            # === RESPONSIVE TABLE ===
+            # === BUILD HTML TABLE SAFELY ===
             html_table = """
             <style>
             .responsive-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.85em;
-                display: block;
-                overflow-x: auto;
-                white-space: nowrap;
+                width: 100%; border-collapse: collapse; font-size: 0.85em;
+                display: block; overflow-x: auto; white-space: nowrap;
             }
             .responsive-table th, .responsive-table td {
-                padding: 10px 8px;
-                text-align: left;
-                border-bottom: 1px solid #eee;
-                min-width: 80px;
+                padding: 10px 8px; text-align: left; border-bottom: 1px solid #eee; min-width: 80px;
             }
             .responsive-table th {
-                background-color: #f8f9fa;
-                font-weight: 600;
-                position: sticky;
-                top: 0;
-                z-index: 1;
+                background-color: #f8f9fa; font-weight: 600; position: sticky; top: 0; z-index: 1;
             }
-            .responsive-table tr:hover {
-                background-color: #f1f3f5;
-            }
-            .responsive-table a {
-                color: #00D26A !important;
-                font-weight: 500;
-            }
+            .responsive-table tr:hover { background-color: #f1f3f5; }
+            .responsive-table a { color: #00D26A !important; font-weight: 500; }
             @media (max-width: 768px) {
-                .responsive-table {font-size: 0.75em;}
-                .responsive-table th, .responsive-table td {padding: 6px 4px;}
+                .responsive-table { font-size: 0.75em; }
+                .responsive-table th, .responsive-table td { padding: 6px 4px; }
             }
             </style>
             <div style="max-height: 550px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px;">
@@ -359,16 +359,28 @@ if st.button("Lancer l'analyse IA"):
                 title = row['Titre']
                 if len(title) > 80:
                     title = title[:77] + "..."
+
+                # ESCAPE ONLY THE TEXT, NOT THE <a> TAG
+                safe_title = html.escape(title)
+                lien_html = row['Lien_HTML']  # Already safe HTML
+
                 html_table += f"""
                 <tr>
-                    <td style="max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{title}</td>
+                    <td style="max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {safe_title}
+                    </td>
                     <td style="text-align: center;">{row['Sentiment']}</td>
                     <td style="text-align: center;">{row['Score']:.3f}</td>
-                    <td style="text-align: center;">{row['Lien']}</td>
+                    <td style="text-align: center;">{lien_html}</td>
                 </tr>
                 """
 
-            html_table += "</tbody></table></div>"
+            html_table += """
+                </tbody>
+            </table>
+            </div>
+            """
+
             st.markdown(html_table, unsafe_allow_html=True)
         st.markdown("---")
 
@@ -425,6 +437,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
