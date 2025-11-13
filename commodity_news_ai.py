@@ -163,20 +163,6 @@ def analyze_sentiment(title, model):
         if any(w in t for w in neg):
             return "Négative", round(random.uniform(-0.95, -0.6), 3)
         return "Neutre", 0.0
-def make_clickable(url):
-    if url == "#" or not url.startswith("http"):
-        return "Lien non disponible"
-    # Clean Bing redirect: extract real URL from 'url=' param
-    if "bing.com/news/apiclick.aspx" in url:
-        try:
-            from urllib.parse import parse_qs, urlparse
-            parsed = urlparse(url)
-            real_url = parse_qs(parsed.query).get('url', [url])[0]
-            if real_url:
-                url = real_url
-        except:
-            pass  # fallback to original
-    return f'<a href="{url}" target="_blank">Voir l\'article</a>'
 
 if st.button("Lancer l'analyse IA"):
     st.session_state.scrape_counter += 1  # FORCE FRESH
@@ -392,6 +378,7 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
 
