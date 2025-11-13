@@ -173,7 +173,7 @@ if st.button("Lancer l'analyse IA"):
             {"title": f"EU imposes new tariffs on {commodity}", "link": "https://euronews.com", "source": "Simulé"}
         ]
         
-        real_articles = scrape_bing_news(commodity, num_articles)
+        real_articles = scrape_news(commodity, num_articles)
         articles = real_articles if real_articles else fallback_articles[:num_articles]
         
         model = load_sentiment_model()
@@ -326,5 +326,6 @@ with st.expander("Voir mon CV complet (clique pour télécharger)", expanded=Fal
                 )
         else:
             st.warning("Fichier PDF manquant → Ajoute `CV_Moatez_DHIEB.pdf`")
+
 
 
