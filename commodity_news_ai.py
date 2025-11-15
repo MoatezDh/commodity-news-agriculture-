@@ -10,7 +10,7 @@ import time
 import os
 from datetime import datetime
 from transformers import pipeline
-import random
+
 #   PAGE CONFIG  
 st.set_page_config(
     page_title="Commodity News AI - Moatez Dhieb",
@@ -18,17 +18,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# FREE US PROXIES (tested Nov 2025)
-US_PROXIES = [
-    "http://209.127.191.180:80",
-    "http://192.111.139.165:4145",
-    "http://67.201.33.10:25283",
-    "http://38.154.227.167:5868",
-]
 
-def get_proxy():
-    proxy = random.choice(US_PROXIES)
-    return {"http": proxy, "https": proxy}
 
 #   PRO CSS: GLASSMORPHISM + IMPACT  
 st.markdown("""
@@ -188,98 +178,73 @@ def scrape_news(query, n=5):
         return st.session_state[cache_key]
 
     articles = []
-    google_urls = [
-        f"https://news.google.com/rss/search?q={query}+price+when:1d&hl=en-US&gl=US&ceid=US:en",
-        f"https://news.google.com/rss/search?q={query}+price&hl=en-US&gl=US"
-    ]
-
-    # TRY GOOGLE WITH PROXY
-    for url in google_urls:
-        if articles:
-            break
-        headers = random.choice(HEADERS)
-        for _ in range(3):
-            proxy = get_proxy()
-            try:
-                time.sleep(1)
-                response = requests.get(
-                    url,
-                    headers=headers,
-                    proxies=proxy,
-                    timeout=12,
-                    verify=False  # Skip SSL for free proxies
-                )
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'xml')
-                    items = soup.find_all('item')[:50]
-                    if items:
-                        valid = []
-                        for item in items:
-                            title = item.find('title')
-                            link = item.find('link')
-                            if not title or not link: continue
-                            title = title.text.strip()
-                            link = link.text.strip()
-                            if len(title) < 25 or any(x in title.lower() for x in ["video", "watch", "live"]): continue
-
-                            # Clean Google link
-                            if "news.google.com/rss/articles/" in link:
-                                try:
-                                    from urllib.parse import urlparse
-                                    import base64, re
-                                    encoded = urlparse(link).path.split("/articles/")[-1].split("?")[0]
-                                    missing = len(encoded) % 4
-                                    if missing: encoded += '=' * (4 - missing)
-                                    decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
-                                    match = re.search(r'"(https?://[^"]+)"', decoded)
-                                    if match: link = match.group(1)
-                                except: pass
-
-                            valid.append({"title": title, "link": link, "source": "Google"})
-                        if valid:
-                            articles = valid[:n]
-                            st.success(f"Google (via US proxy): {len(valid)} articles → {len(articles)} selected")
-                            break
-            except:
-                continue
-
-    # FALLBACK: BING (NO PROXY NEEDED)
-    if not articles:
+    #   SOURCE 1: BING (INCREASE LIMIT TO 30)  
+    if len(articles) < n:
+        url_bing = f"https://www.bing.com/news/search?q={query}+price&format=rss"
         try:
             time.sleep(0.5)
-            response = requests.get(
-                f"https://www.bing.com/news/search?q={query}+price&format=rss",
-                headers=random.choice(HEADERS),
-                timeout=10
-            )
+            response = requests.get(url_bing, headers=HEADERS, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'xml')
-                items = soup.find_all('item')[:50]
+                items = soup.find_all('item')[:30]  # INCREASED LIMIT
                 valid = []
                 for item in items:
                     title = item.find('title').text.strip() if item.find('title') else ""
                     link = item.find('link').text.strip() if item.find('link') else ""
-                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch"]): continue
+                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch", "live"]):
+                        continue
+                    # Clean Bing link
+                    if "bing.com/news/apiclick.aspx" in link:
+                        try:
+                            from urllib.parse import parse_qs, urlparse
+                            real = parse_qs(urlparse(link).query).get('url', [link])[0]
+                            link = real
+                        except: pass
                     valid.append({"title": title, "link": link, "source": "Bing"})
                 if valid:
-                    articles = valid[:n]
-                    st.success(f"Bing: {len(valid)} articles → {len(articles)} selected")
-        except:
-            pass
+                    articles += valid[:n * 2 - len(articles)]
+                    st.success(f"Bing: {len(valid)} articles added")
+        except Exception as e:
+            st.info(f"Bing unavailable: {e}")
 
-    # FINAL FALLBACK
+    #   SOURCE 2: REUTERS RSS (RELIABLE AGRICULTURE)  
+    if len(articles) < n:
+        url_reuters = f"https://www.reuters.com/arc/outboundfeeds/news-rss/?outputType=xml&query={query}+price"
+        try:
+            time.sleep(0.5)
+            response = requests.get(url_reuters, headers=HEADERS, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'xml')
+                items = soup.find_all('item')[:20]
+                valid = []
+                for item in items:
+                    title = item.find('title').text.strip() if item.find('title') else ""
+                    link = item.find('link').text.strip() if item.find('link') else ""
+                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch"]):
+                        continue
+                    valid.append({"title": title, "link": link, "source": "Reuters"})
+                if valid:
+                    articles += valid[:n * 2 - len(articles)]
+                    st.success(f"Reuters: {len(valid)} articles added")
+        except Exception as e:
+            st.info(f"Reuters unavailable: {e}")
+
+    #   FILTER & FINALIZE  
+    articles = articles[:n]
+    
+    # FINAL FALLBACK (if still empty)
     if not articles:
         st.info("All sources down → Using simulated data")
         articles = [
             {"title": f"{query.title()} prices rise sharply", "link": "https://reuters.com", "source": "Simulated"},
-            {"title": f"Global {query} shortage warning", "link": "https://bloomberg.com", "source": "Simulated"}
+            {"title": f"Global {query} shortage warning", "link": "bloomberg.com", "source": "Simulated"},
+            {"title": f"New tariffs impact {query} market", "link": "wsj.com", "source": "Simulated"}
         ][:n]
 
     # SAVE
-    if articles:
-        with open(JSON_FILE, "w", encoding="utf-8") as f:
-            json.dump(articles, f, ensure_ascii=False, indent=2)
-        st.session_state[cache_key] = articles
+    with open(JSON_FILE, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False, indent=2)
+    st.session_state[cache_key] = articles
 
     return articles
 #   MAIN ANALYSIS BUTTON  
@@ -398,7 +363,7 @@ if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
                 sizes.append(6)
                 colors.append("#666680")
 
-        # === 3D GLOBE ===
+        #   3D GLOBE  
         fig_3d = go.Figure(data=go.Scattergeo(
             lon=lons,
             lat=lats,
@@ -535,6 +500,7 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
