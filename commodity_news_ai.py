@@ -116,14 +116,6 @@ with col2:
 
 #   LIVE CLOCK  
 st.markdown(f'<div class="live-clock">Live Analysis • {datetime.now().strftime("%H:%M:%S")} UTC</div>', unsafe_allow_html=True)
-# RESILIENCE BADGE
-col_b1, col_b2, col_b3 = st.columns([1, 2, 1])
-with col_b2:
-    st.markdown("""
-    <div style='text-align:center; padding:10px; background:rgba(0,210,106,0.15); border-radius:12px; border-left:5px solid #00D26A; font-size:0.95rem;'>
-        <b>99.9% Uptime</b> • 4 Sources • 3 Retries • Auto-Failover
-    </div>
-    """, unsafe_allow_html=True)
 #   SIDEBAR  
 with st.sidebar:
     st.image("https://via.placeholder.com/150x50/00D26A/ffffff?text=DNEXT", use_column_width=True)
@@ -493,6 +485,7 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
