@@ -138,19 +138,10 @@ with st.sidebar:
     st.markdown(f"**Hugging Face Model:** {'Active' if st.session_state.model_loaded else 'Loading...'}")
 
 #   HEADERS & FILES  
-HEADERS = [
-    {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    },
-    {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-]
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept-Language": "en-US,en;q=0.9"
+}
 JSON_FILE = "scraped_articles.json"
 
 #   MODEL LOADING  
@@ -178,75 +169,77 @@ def scrape_news(query, n=5):
         return st.session_state[cache_key]
 
     articles = []
-    #   SOURCE 1: BING (INCREASE LIMIT TO 30)  
-    if len(articles) < n:
-        url_bing = f"https://www.bing.com/news/search?q={query}+price&format=rss"
-        try:
-            time.sleep(0.5)
-            response = requests.get(url_bing, headers=HEADERS, timeout=10)
-            if response.status_code == 200:
+    sources = [
+        ("Google", f"https://news.google.com/rss/search?q={query}+price+when:1d&hl=en-US&gl=US&ceid=US:en"),
+        ("Google Alt", f"https://news.google.com/rss/search?q={query}+price&hl=en-US"),
+        ("Bing", f"https://www.bing.com/news/search?q={query}+price&format=rss"),
+        ("DuckDuckGo", f"https://duckduckgo.com/news.rss?q={query}+price")
+    ]
+
+    for name, url in sources:
+        if articles:
+            break
+        for attempt in range(3):
+            try:
+                time.sleep(0.5)
+                response = requests.get(url, headers=HEADERS, timeout=8)
+                if response.status_code != 200:
+                    continue
                 soup = BeautifulSoup(response.text, 'xml')
-                items = soup.find_all('item')[:30]  # INCREASED LIMIT
+                items = soup.find_all('item')[:50]
+                if not items:
+                    continue
+
                 valid = []
                 for item in items:
-                    title = item.find('title').text.strip() if item.find('title') else ""
-                    link = item.find('link').text.strip() if item.find('link') else ""
-                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch", "live"]):
+                    title = item.find('title')
+                    link = item.find('link')
+                    if not title or not link:
                         continue
-                    # Clean Bing link
-                    if "bing.com/news/apiclick.aspx" in link:
+                    title = title.text.strip()
+                    link = link.text.strip()
+
+                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch", "live", "youtube"]):
+                        continue
+
+                    # Clean Google link
+                    if "news.google.com/rss/articles/" in link:
                         try:
-                            from urllib.parse import parse_qs, urlparse
-                            real = parse_qs(urlparse(link).query).get('url', [link])[0]
-                            link = real
+                            from urllib.parse import urlparse
+                            import base64, re
+                            encoded = urlparse(link).path.split("/articles/")[-1].split("?")[0]
+                            missing = len(encoded) % 4
+                            if missing: encoded += '=' * (4 - missing)
+                            decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', 'ignore')
+                            match = re.search(r'"(https?://[^"]+)"', decoded)
+                            if match: link = match.group(1)
                         except: pass
-                    valid.append({"title": title, "link": link, "source": "Bing"})
-                if valid:
-                    articles += valid[:n * 2 - len(articles)]
-                    st.success(f"Bing: {len(valid)} articles added")
-        except Exception as e:
-            st.info(f"Bing unavailable: {e}")
 
-    #   SOURCE 2: REUTERS RSS (RELIABLE AGRICULTURE)  
-    if len(articles) < n:
-        url_reuters = f"https://www.reuters.com/arc/outboundfeeds/news-rss/?outputType=xml&query={query}+price"
-        try:
-            time.sleep(0.5)
-            response = requests.get(url_reuters, headers=HEADERS, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'xml')
-                items = soup.find_all('item')[:20]
-                valid = []
-                for item in items:
-                    title = item.find('title').text.strip() if item.find('title') else ""
-                    link = item.find('link').text.strip() if item.find('link') else ""
-                    if len(title) < 25 or any(x in title.lower() for x in ["video", "watch"]):
-                        continue
-                    valid.append({"title": title, "link": link, "source": "Reuters"})
+                    valid.append({"title": title, "link": link, "source": name})
                 if valid:
-                    articles += valid[:n * 2 - len(articles)]
-                    st.success(f"Reuters: {len(valid)} articles added")
-        except Exception as e:
-            st.info(f"Reuters unavailable: {e}")
+                    articles = valid[:n]
+                    st.success(f"{name}: {len(valid)} articles loaded → {len(articles)} selected")
+                    break
+            except:
+                continue
 
-    #   FILTER & FINALIZE  
-    articles = articles[:n]
-    
-    # FINAL FALLBACK (if still empty)
+    # Final fallback
     if not articles:
-        st.info("All sources down → Using simulated data")
+        st.info("All sources down → Using simulated data (realistic fallback)")
         articles = [
-            {"title": f"{query.title()} prices rise sharply", "link": "https://reuters.com", "source": "Simulated"},
-            {"title": f"Global {query} shortage warning", "link": "bloomberg.com", "source": "Simulated"},
-            {"title": f"New tariffs impact {query} market", "link": "wsj.com", "source": "Simulated"}
+            {"title": f"{query.title()} prices rise on supply fears", "link": "https://reuters.com", "source": "Simulated"},
+            {"title": f"Global demand boosts {query}", "link": "https://bloomberg.com", "source": "Simulated"},
+            {"title": f"New tariffs impact {query} market", "link": "https://wsj.com", "source": "Simulated"}
         ][:n]
 
-    # SAVE
-    with open(JSON_FILE, "w", encoding="utf-8") as f:
-        json.dump(articles, f, ensure_ascii=False, indent=2)
-    st.session_state[cache_key] = articles
+    # Save
+    if articles:
+        with open(JSON_FILE, "w", encoding="utf-8") as f:
+            json.dump(articles, f, ensure_ascii=False, indent=2)
+        st.session_state[cache_key] = articles
 
     return articles
+    
 #   MAIN ANALYSIS BUTTON  
 if st.button("RUN AI ANALYSIS", type="primary", use_container_width=True):
     st.session_state.scrape_counter += 1
@@ -500,6 +493,7 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
