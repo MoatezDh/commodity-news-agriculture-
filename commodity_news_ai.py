@@ -23,7 +23,6 @@ US_PROXIES = [
     "http://209.127.191.180:80",
     "http://192.111.139.165:4145",
     "http://67.201.33.10:25283",
-    "http://154.16.146.45:80",
     "http://38.154.227.167:5868",
 ]
 
@@ -536,6 +535,7 @@ with st.expander("View my full CV (click to download)", expanded=False):
         else:
             st.warning("PDF file missing → Add `CV_Moatez_DHIEB.pdf`")
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 
